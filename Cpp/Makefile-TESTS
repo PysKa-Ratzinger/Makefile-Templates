@@ -1,0 +1,86 @@
+SRC_DIR         := ./src
+SRC_DIR_PAR     := ../src
+OBJ_DIR         := ./build
+OBJ_DIR_PAR     := ../build
+BIN_DIR         := ./bin
+TEST_DIR        := ./tests
+TARGET_RUNNER   := main
+
+CFLAGS_COMMON := \
+	-O0 -g \
+	-I./src/imgui \
+	-Wall \
+	-Wextra \
+	-Werror \
+	-Wno-unused-label \
+	-Wformat-security \
+	-fvisibility=hidden
+CXXFLAGS_COMMON := \
+	$(CFLAGS_COMMON) \
+	-std=c++17 \
+	-fvisibility-inlines-hidden
+
+LDFLAGS_SHARED_COMMON := -shared -fvisibility=hidden -fvisibility-inlines-hidden
+#LDFLAGS_COMMON := `pkg-config --static --libs lib1 lib2 lib3`
+#LDFLAGS_SHARED_PROD := -s -Wl,--gc-sections -Wl,--strip-all $(LDFLAGS_SHARED_COMMON)
+LDFLAGS_SHARED_PROD := -Wl,--gc-sections -Wl,--strip-all -Wl,--version-script=lib.script $(LDFLAGS_SHARED_COMMON)
+
+CFLAGS         += $(CFLAGS_COMMON)
+CXXFLAGS       += $(CXXFLAGS_COMMON)
+LDFLAGS_SHARED += $(LDFLAGS_SHARED_COMMON)
+#LDFLAGS        += $(LDFLAGS_COMMON)
+
+dir_guard=@mkdir -p $(@D)
+
+SOURCES_C       =\
+	$(shell find $(SRC_DIR)     -type f -name '*.c')
+SOURCES_CPP     =\
+	$(shell find $(SRC_DIR)     -type f -name '*.cpp')
+SOURCES_PAR_C   =\
+	$(shell find $(SRC_DIR_PAR) -type f -name '*.c'   ! -name 'main.c')
+SOURCES_PAR_CPP =\
+	$(shell find $(SRC_DIR_PAR) -type f -name '*.cpp' ! -name 'main.cpp')
+
+OBJECTS_C       =\
+	$(patsubst $(SRC_DIR)/%.c,       $(OBJ_DIR)/%.o,     $(SOURCES_C))
+OBJECTS_CPP     =\
+	$(patsubst $(SRC_DIR)/%.cpp,     $(OBJ_DIR)/%.o,     $(SOURCES_CPP))
+OBJECTS_PAR_C   =\
+	$(patsubst $(SRC_DIR_PAR)/%.c,   $(OBJ_DIR_PAR)/%.o, $(SOURCES_PAR_C))
+OBJECTS_PAR_CPP =\
+	$(patsubst $(SRC_DIR_PAR)/%.cpp, $(OBJ_DIR_PAR)/%.o, $(SOURCES_PAR_CPP))
+
+OBJECTS_PAR = $(OBJECTS_PAR_C) $(OBJECTS_PAR_CPP)
+OBJECTS     = $(OBJECTS_CPP) $(OBJECTS_C)
+DEPS        = $(patsubst %.o, %.d, $(OBJECTS))
+
+all: target
+
+target: $(BIN_DIR)/$(TARGET_RUNNER) $(OBJECTS)
+
+-include $(DEPS)
+
+$(BIN_DIR)/$(TARGET_RUNNER): $(OBJECTS) $(OBJECTS_PAR)
+	$(dir_guard)
+	$(CXX) $(LDFLAGS) -I../src -I../include $+ -o $@ $(LDLIBS)
+
+$(OBJECTS_C): $(OBJ_DIR)/%.o : $(SRC_DIR)/%.c
+	$(dir_guard)
+	$(CC) -MMD -MP -c $< -I../src -I../include $(CFLAGS) -o $@
+
+$(OBJECTS_CPP): $(OBJ_DIR)/%.o : $(SRC_DIR)/%.cpp
+	$(dir_guard)
+	$(CXX) -MMD -MP -c $< -I../src -I../include $(CXXFLAGS) -o $@
+
+run: all
+	$(BIN_DIR)/$(TARGET_RUNNER)
+
+lint: all
+	cppcheck src
+
+run_valgrind: all
+	valgrind $(BIN_DIR)/$(TARGET_RUNNER)
+
+clean:
+	rm -rvf $(BIN_DIR) $(OBJ_DIR)
+
